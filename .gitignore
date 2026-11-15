@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Secrets / local config (NEVER commit; .env.example is the template)
+.env
+.env.*
+!.env.example
+
+# Tool caches and generated reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Editors / OS
+.idea/
+.vscode/
+.cursor/
+.DS_Store

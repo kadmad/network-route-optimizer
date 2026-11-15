@@ -1,0 +1,123 @@
+# Installed by `make setup`. Run on everything: uv run pre-commit run --all-files
+#
+# Stages
+#   pre-commit : fast checks on staged files (format, lint, types, security, secrets)
+#   commit-msg : Conventional Commits (feat:, fix:, chore:, ...)
+#   pre-push   : slower gates - migrations in sync + the test-suite
+#
+# ruff / mypy / bandit run as *local* hooks through `uv run`, so they use exactly the versions
+# pinned in uv.lock (no version drift between hooks, CI and developers' machines).
+minimum_pre_commit_version: "4.0.0"
+default_stages: [pre-commit]
+
+repos:
+  # --------------------------------------------------------------------------- hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-ast
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: debug-statements        # forgotten breakpoint()/pdb
+      - id: detect-private-key
+
+  # --------------------------------------------------------------------------- secrets
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  # --------------------------------------------------------------------------- dependencies
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.8
+    hooks:
+      - id: uv-lock               # fails if pyproject.toml and uv.lock are out of sync
+
+  # --------------------------------------------------------------------------- python
+  - repo: https://github.com/adamchainz/django-upgrade
+    rev: 1.33.0
+    hooks:
+      - id: django-upgrade
+        args: [--target-version, "5.2"]
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff (lint + autofix)
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff (format)
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: mypy
+        name: mypy (strict, django-stubs)
+        entry: uv run mypy .
+        language: system
+        types: [python]
+        require_serial: true
+        pass_filenames: false     # plugins need whole-project context
+
+      - id: bandit
+        name: bandit (security lint)
+        entry: uv run bandit -c pyproject.toml -q
+        language: system
+        types: [python]
+        exclude: ^(apps/.*/tests/|common/tests/|tests/)
+        require_serial: true
+
+  # --------------------------------------------------------------------------- infra files
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.15.1
+    hooks:
+      - id: hadolint
+
+  # --------------------------------------------------------------------------- commit message
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.5.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert]
+
+  # --------------------------------------------------------------------------- pre-push gates
+  - repo: local
+    hooks:
+      - id: migrations-in-sync
+        name: no missing migrations
+        entry: uv run python manage.py makemigrations --check --dry-run
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: pytest
+        name: "pytest (needs a running PostgreSQL)"
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
