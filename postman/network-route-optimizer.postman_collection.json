@@ -1,0 +1,1668 @@
+{
+  "info": {
+    "_postman_id": "009aefee-39ff-4241-bf32-0079415ec27e",
+    "name": "Network Route Optimizer API",
+    "description": "Ready-to-run demo for the Network Route Optimizer API.\n\n**Setup:** start the API (`make up` or `make run`) and import this file - nothing else is needed. Two collection variables are preset, so there is nothing to configure when the API runs locally:\n\n| Variable | Default | Used by |\n|---|---|---|\n| `base_url` | `http://localhost:8000/api/v1` | all `/nodes`, `/edges`, `/routes` requests |\n| `health_url` | `http://localhost:8000/health` | the health check (it lives outside `/api/v1`) |\n\nTo point at another host, edit both in the collection's *Variables* tab (change the host and port, keep the paths). The API is open: no authentication, as per the contract.\n\n**How to use:** click *Run* on the collection (Collection Runner) to execute everything top to bottom, or send requests one by one - folders are ordered so state flows downwards (create nodes before edges, edges before routes). Every request carries assertions.\n\n**Warning:** folder *1 - Reset demo data* deletes ALL nodes (and their edges). Use it on a demo database only.\n\n**Demo graph:**\n```\nA --12.5--> B --10.9--> D   (A->D = 23.4 via B)\nA --5.0---> C --30.0--> D   (35.0 via C)\n```",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api/v1"
+    },
+    {
+      "key": "health_url",
+      "value": "http://localhost:8000/health"
+    },
+    {
+      "key": "run_started_at",
+      "value": "2000-01-01T00:00:00Z"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 - Health",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{health_url}}",
+              "host": [
+                "{{health_url}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status ok\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1 - Reset demo data (DESTRUCTIVE)",
+      "item": [
+        {
+          "name": "Reset: delete ALL nodes (edges cascade)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nodes?limit=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1000"
+                }
+              ]
+            },
+            "description": "Lists nodes (bare array) then deletes each one in the test script so the collection can be re-run. **Destructive - demo databases only.**"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "// Deletes every node (edges cascade) so the whole collection is re-runnable. DEMO DATA ONLY.",
+                  "const base = pm.collectionVariables.get(\"base_url\");",
+                  "const nodes = pm.response.json();",
+                  "pm.test(`reset: removing ${nodes.length} existing node(s)`, () => pm.expect(nodes).to.be.an(\"array\"));",
+                  "nodes.forEach(n => pm.sendRequest({ url: `${base}/nodes/${n.id}`, method: \"DELETE\" }));"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"run_started_at\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 - Nodes",
+      "item": [
+        {
+          "name": "Create node ServerA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/nodes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            },
+            "description": "Contract: POST /nodes -> 201 {id, name}. Stores `node_a_id` for later requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ServerA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape {id, name}\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"name\");",
+                  "    pm.expect(body.name).to.eql(\"ServerA\");",
+                  "});",
+                  "pm.test(\"X-Request-ID echoed\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\").and.not.empty);",
+                  "pm.collectionVariables.set(\"node_a_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create node ServerB",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/nodes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            },
+            "description": "Contract: POST /nodes -> 201 {id, name}. Stores `node_b_id` for later requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ServerB\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape {id, name}\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"name\");",
+                  "    pm.expect(body.name).to.eql(\"ServerB\");",
+                  "});",
+                  "pm.test(\"X-Request-ID echoed\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\").and.not.empty);",
+                  "pm.collectionVariables.set(\"node_b_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create node ServerC",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/nodes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            },
+            "description": "Contract: POST /nodes -> 201 {id, name}. Stores `node_c_id` for later requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ServerC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape {id, name}\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"name\");",
+                  "    pm.expect(body.name).to.eql(\"ServerC\");",
+                  "});",
+                  "pm.test(\"X-Request-ID echoed\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\").and.not.empty);",
+                  "pm.collectionVariables.set(\"node_c_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create node ServerD",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/nodes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            },
+            "description": "Contract: POST /nodes -> 201 {id, name}. Stores `node_d_id` for later requests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ServerD\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape {id, name}\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"name\");",
+                  "    pm.expect(body.name).to.eql(\"ServerD\");",
+                  "});",
+                  "pm.test(\"X-Request-ID echoed\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\").and.not.empty);",
+                  "pm.collectionVariables.set(\"node_d_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create node - duplicate name (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/nodes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            },
+            "description": "Uniqueness is enforced by a DB constraint, so this is race-safe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ServerA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "",
+                  "pm.test(\"error envelope mentions 'already exists'\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property(\"error\");",
+                  "    pm.expect(JSON.stringify(body)).to.include(\"already exists\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create node - name missing (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/nodes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"field error under details.name\", () => pm.expect(pm.response.json().details).to.have.property(\"name\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create node - integer name (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/nodes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ]
+            },
+            "description": "Names must be JSON strings; numbers are rejected rather than coerced to \"123\".",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": 123\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"name field error\", () => pm.expect(pm.response.json().details.name).to.include(\"Not a valid string.\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List nodes (bare array)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nodes?limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Contract: `GET /nodes` returns a plain array. Supports `?limit=` (default 100, max 1000) and `?offset=`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"plain array with 4 nodes ordered by id\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.be.an(\"array\");",
+                  "    pm.expect(body.map(n => n.name)).to.eql([\"ServerA\", \"ServerB\", \"ServerC\", \"ServerD\"]);",
+                  "    pm.expect(body[0]).to.have.all.keys(\"id\", \"name\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List nodes - limit=2&offset=1",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nodes?limit=2&offset=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "2"
+                },
+                {
+                  "key": "offset",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Paging without an envelope: skip 1, take 2."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"second page slice\", () => pm.expect(pm.response.json().map(n => n.name)).to.eql([\"ServerB\", \"ServerC\"]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 - Edges",
+      "item": [
+        {
+          "name": "Create edge ServerA -> ServerB (12.5 ms)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "Contract: POST /edges -> 201 {id, source, destination, latency}. Directed edge.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"ServerB\",\n  \"latency\": 12.5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"source\", \"destination\", \"latency\");",
+                  "    pm.expect(body.source).to.eql(\"ServerA\");",
+                  "    pm.expect(body.destination).to.eql(\"ServerB\");",
+                  "    pm.expect(body.latency).to.eql(12.5);",
+                  "});",
+                  "pm.collectionVariables.set(\"edge_ab_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge ServerB -> ServerD (10.9 ms)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "Contract: POST /edges -> 201 {id, source, destination, latency}. Directed edge.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerB\",\n  \"destination\": \"ServerD\",\n  \"latency\": 10.9\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"source\", \"destination\", \"latency\");",
+                  "    pm.expect(body.source).to.eql(\"ServerB\");",
+                  "    pm.expect(body.destination).to.eql(\"ServerD\");",
+                  "    pm.expect(body.latency).to.eql(10.9);",
+                  "});",
+                  "pm.collectionVariables.set(\"edge_bd_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge ServerA -> ServerC (5 ms)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "Contract: POST /edges -> 201 {id, source, destination, latency}. Directed edge.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"ServerC\",\n  \"latency\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"source\", \"destination\", \"latency\");",
+                  "    pm.expect(body.source).to.eql(\"ServerA\");",
+                  "    pm.expect(body.destination).to.eql(\"ServerC\");",
+                  "    pm.expect(body.latency).to.eql(5);",
+                  "});",
+                  "pm.collectionVariables.set(\"edge_ac_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge ServerC -> ServerD (30 ms)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "Contract: POST /edges -> 201 {id, source, destination, latency}. Directed edge.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerC\",\n  \"destination\": \"ServerD\",\n  \"latency\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"contract shape\", () => {",
+                  "    pm.expect(body).to.have.all.keys(\"id\", \"source\", \"destination\", \"latency\");",
+                  "    pm.expect(body.source).to.eql(\"ServerC\");",
+                  "    pm.expect(body.destination).to.eql(\"ServerD\");",
+                  "    pm.expect(body.latency).to.eql(30);",
+                  "});",
+                  "pm.collectionVariables.set(\"edge_cd_id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge - duplicate (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"ServerB\",\n  \"latency\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "",
+                  "pm.test(\"error envelope mentions 'already exists'\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property(\"error\");",
+                  "    pm.expect(JSON.stringify(body)).to.include(\"already exists\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge - unknown node (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"Ghost\",\n  \"latency\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "",
+                  "pm.test(\"error envelope mentions 'Ghost'\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property(\"error\");",
+                  "    pm.expect(JSON.stringify(body)).to.include(\"Ghost\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge - latency <= 0 (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"ServerD\",\n  \"latency\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"latency field error\", () => pm.expect(pm.response.json().details).to.have.property(\"latency\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge - self-loop ServerA -> ServerA (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "A node cannot link to itself. Rejected with 400 and the contract-style body `{\"error\": \"...\"}`. The comparison is exact and case-sensitive.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"ServerA\",\n  \"latency\": 10.5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"plain {error} body, as per contract\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(Object.keys(body)).to.eql([\"error\"]);",
+                  "    pm.expect(body.error).to.include(\"must be different nodes\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create edge - destination missing (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"latency\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"destination field error\", () => pm.expect(pm.response.json().details).to.have.property(\"destination\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List edges (bare array)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"plain array of 4 edges with names, not ids\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.be.an(\"array\").with.lengthOf(4);",
+                  "    pm.expect(body[0]).to.have.all.keys(\"id\", \"source\", \"destination\", \"latency\");",
+                  "    pm.expect(body[0].source).to.eql(\"ServerA\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 - Routes",
+      "item": [
+        {
+          "name": "Shortest route ServerA -> ServerD (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/routes/shortest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "shortest"
+              ]
+            },
+            "description": "Contract example: total_latency 23.4 via ServerB (the 35.0 path via ServerC loses). The query is recorded in history.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"ServerD\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"total_latency is 23.4 and path goes via ServerB\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.total_latency).to.eql(23.4);",
+                  "    pm.expect(body.path).to.eql([\"ServerA\", \"ServerB\", \"ServerD\"]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Shortest route ServerA -> ServerC (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/routes/shortest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "shortest"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"ServerC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"direct edge\", () => pm.expect(pm.response.json()).to.eql({ total_latency: 5, path: [\"ServerA\", \"ServerC\"] }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Shortest route - no path, graph is directed (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/routes/shortest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "shortest"
+              ]
+            },
+            "description": "Edges are directed, so D cannot reach A. Failed lookups are not recorded in history.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerD\",\n  \"destination\": \"ServerA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 Not Found\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"contract error body\", () => pm.expect(pm.response.json()).to.eql({ error: \"No path exists between ServerD and ServerA\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Shortest route - unknown node (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/routes/shortest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "shortest"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\",\n  \"destination\": \"Ghost\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));",
+                  "",
+                  "pm.test(\"error envelope mentions 'Ghost'\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property(\"error\");",
+                  "    pm.expect(JSON.stringify(body)).to.include(\"Ghost\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Shortest route - missing field (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/routes/shortest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "shortest"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"ServerA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History - all (oldest first)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/routes/history?date_from={{run_started_at}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": "{{run_started_at}}"
+                }
+              ]
+            },
+            "description": "History is append-only (no delete endpoint), so every request in this folder is scoped with `date_from={{run_started_at}}` (set by the reset step) to keep the collection re-runnable."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"bare array, oldest first, 2 successful queries recorded\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.be.an(\"array\").with.lengthOf(2);",
+                  "    pm.expect(body[0]).to.have.all.keys(\"id\", \"source\", \"destination\", \"total_latency\", \"path\", \"created_at\");",
+                  "    pm.expect(body[0].total_latency).to.eql(23.4);",
+                  "    pm.expect(body[1].destination).to.eql(\"ServerC\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History - filter by source + destination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/routes/history?source=ServerA&destination=ServerD&date_from={{run_started_at}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "ServerA"
+                },
+                {
+                  "key": "destination",
+                  "value": "ServerD"
+                },
+                {
+                  "key": "date_from",
+                  "value": "{{run_started_at}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"only A->D\", () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.lengthOf(1);",
+                  "    pm.expect(body[0].path).to.eql([\"ServerA\", \"ServerB\", \"ServerD\"]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History - limit=1",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/routes/history?limit=1&date_from={{run_started_at}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                },
+                {
+                  "key": "date_from",
+                  "value": "{{run_started_at}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test('one record', () => pm.expect(pm.response.json()).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History - date range",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/routes/history?date_from={{run_started_at}}&date_to=2099-12-31T23:59:59Z",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": "{{run_started_at}}"
+                },
+                {
+                  "key": "date_to",
+                  "value": "2099-12-31T23:59:59Z"
+                }
+              ]
+            },
+            "description": "`date_from` / `date_to` are inclusive ISO-8601 timestamps. Here the window runs from the start of this run to the year 2099, so it contains both queries recorded by this run."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test('both queries inside the window', () => pm.expect(pm.response.json()).to.have.lengthOf(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History - inverted date range (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/routes/history?date_from=2030-01-02T00:00:00Z&date_to=2030-01-01T00:00:00Z",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "date_from",
+                  "value": "2030-01-02T00:00:00Z"
+                },
+                {
+                  "key": "date_to",
+                  "value": "2030-01-01T00:00:00Z"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History - invalid limit (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/routes/history?limit=abc",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "abc"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400 Bad Request\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 - Deletes & re-routing",
+      "item": [
+        {
+          "name": "Delete edge ServerC -> ServerD (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/edges/{{edge_cd_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges",
+                "{{edge_cd_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete edge again (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/edges/{{edge_cd_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges",
+                "{{edge_cd_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 Not Found\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete node ServerB - cascades its edges (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nodes/{{node_b_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nodes",
+                "{{node_b_id}}"
+              ]
+            },
+            "description": "`ON DELETE CASCADE` removes A->B and B->D atomically. Route history is unaffected (name snapshots)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edges after cascade (only A -> C remains)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/edges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "edges"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"one edge left\", () => pm.expect(pm.response.json().map(e => `${e.source}->${e.destination}`)).to.eql([\"ServerA->ServerC\"]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History still contains the deleted node's queries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/routes/history?source=ServerA&destination=ServerD&date_from={{run_started_at}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "routes",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "ServerA"
+                },
+                {
+                  "key": "destination",
+                  "value": "ServerD"
+                },
+                {
+                  "key": "date_from",
+                  "value": "{{run_started_at}}"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"snapshot survives node deletion\", () => pm.expect(pm.response.json()[0].path).to.include(\"ServerB\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

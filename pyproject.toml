@@ -1,0 +1,79 @@
+[project]
+name = "network-route-optimizer"
+version = "1.0.0"
+description = "Network routing API: nodes, edges and latency-based shortest paths."
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=5.2,<5.3",
+    "djangorestframework>=3.16",
+    "django-filter>=25.1",
+    "django-environ>=0.12",
+    "psycopg[binary,pool]>=3.2",
+    "python-json-logger>=3.3",
+]
+
+[dependency-groups]
+prod = ["gunicorn>=23.0"]
+test = ["pytest>=8.3", "pytest-django>=4.9", "pytest-cov>=6.0"]
+dev = [
+    { include-group = "test" },
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "django-stubs[compatible-mypy]>=5.1",
+    "djangorestframework-stubs[compatible-mypy]>=3.15",
+    "bandit[toml]>=1.8",
+    "pip-audit>=2.8",
+    "pre-commit>=4.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["**/migrations/*.py"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"]
+"config/settings/*.py" = ["F403", "F405"]
+
+[tool.mypy]
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+strict = true
+exclude = ["/migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["apps.*.tests.*", "tests.*", "*.conftest"]
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["pythonjsonlogger.*", "environ.*", "django_filters.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["apps.routes.filters"]
+disallow_subclassing_any = false
+warn_return_any = false
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+testpaths = ["apps", "common", "tests"]
+
+[tool.coverage.run]
+source = ["apps", "common", "config"]
+branch = true
+omit = ["*/migrations/*", "*/tests/*", "*/conftest.py"]
+
+[tool.coverage.report]
+fail_under = 90
+
+[tool.bandit]
+exclude_dirs = ["tests"]

@@ -1,0 +1,24 @@
+# Runs the API from the production image. PostgreSQL is NOT part of this project: the API connects
+# to the server named in DOCKER_DATABASE_URL (see .env.example).  Start it with: make up
+services:
+  api:
+    build: .
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env (run make env)}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?Set DOCKER_DATABASE_URL in .env (see .env.example)}
+      SECURE_SSL_REDIRECT: "false"  # plain HTTP locally; TLS is terminated by a proxy in real use
+      RUN_MIGRATIONS: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # reach PostgreSQL running on the host (Linux)
+    ports:
+      - "8000:8000"
+    read_only: true  # immutable container filesystem
+    tmpfs:
+      - /tmp
+      - /dev/shm
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

@@ -1,0 +1,18 @@
+# Allow-list: send the Docker daemon only what the Dockerfile COPYs. Everything else (.git, .env,
+# caches, tests, docs, CI config, local tooling) stays out of the build context, so builds are
+# faster, the layer cache is not busted by unrelated edits, and secrets can never leak into an image.
+*
+
+!pyproject.toml
+!uv.lock
+!manage.py
+!config
+!common
+!apps
+!scripts/entrypoint.sh
+
+# Test code, test settings and bytecode inside the allowed directories must not ship either.
+**/tests
+config/settings/test.py
+**/__pycache__
+**/*.py[cod]
